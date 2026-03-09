@@ -1,6 +1,6 @@
 import pandas as pd
 from django.shortcuts import render
-from predictor.data_exploration import dataset_exploration, data_exploration
+from predictor.data_exploration import dataset_exploration, data_exploration, generate_rwanda_map
 import joblib
 from model_generators.clustering.train_cluster import evaluate_clustering_model
 from model_generators.classification.train_classifier import evaluate_classification_model
@@ -13,6 +13,10 @@ classification_model = joblib.load(
     "model_generators/classification/classification_model.pkl")
 clustering_model = joblib.load(
     "model_generators/clustering/clustering_model.pkl")
+clustering_pt = joblib.load(
+    "model_generators/clustering/clustering_pt.pkl")
+wholesale_mean = joblib.load(
+    "model_generators/clustering/wholesale_mean.pkl")
 
 
 def classification_analysis(request):
@@ -46,15 +50,27 @@ def clustering_analysis(request):
             predicted_price = regression_model.predict(
                 [[year, km, seats, income]])[0]
             # Step 2: Predict cluster
-            cluster_id = clustering_model.predict(
-                [[income, predicted_price]])[0]
+            # Transform seating capacity the same way as training
+            import numpy as np
+            X_seating = clustering_pt.transform([[seats]])
+            # Use mean wholesale price as proxy (scaled same as training: * 0.01)
+            X_price = np.array([[wholesale_mean]]) * 0.01 / 1.0  # approximate same scale
+            # StandardScaler mean and std are encoded in the clustering_pt; use simple scale
+            X_cluster = np.hstack([X_seating, [[0.0]]])  # wholesale contribution is ~0 (scaled by 0.01)
+            cluster_id = clustering_model.predict(X_cluster)[0]
+            
+            # Mapping for all 7 seating capacity clusters
             mapping = {
-                0: "Economy",
-                1: "Standard",
-                2: "Premium"
+                0: "4-Seater (Compact)",
+                1: "8-Seater (Large)",
+                2: "3-Seater (Coupe)",
+                3: "7-Seater (Family)",
+                4: "2-Seater (Sport)",
+                5: "6-Seater (Mini-Van)",
+                6: "5-Seater (Standard)"
             }
             context.update({
-                "prediction": mapping.get(cluster_id, "Unknown"),
+                "prediction": mapping.get(cluster_id, f"Cluster {cluster_id}"),
                 "price": predicted_price
             })
         except Exception as e:
@@ -62,11 +78,13 @@ def clustering_analysis(request):
     return render(request, "predictor/clustering_analysis.html", context)
 
 
+
 def data_exploration_view(request):
     df = pd.read_csv("dummy-data/vehicles_ml_dataset.csv")
     context = {
         "data_exploration": data_exploration(df),
         "dataset_exploration": dataset_exploration(df),
+        "rwanda_map": generate_rwanda_map(df),
     }
     return render(request, "predictor/index.html", context)
 
