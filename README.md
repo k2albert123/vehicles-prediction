@@ -70,6 +70,8 @@ vehicles-prediction/
 3. **Install dependencies**
    ```bash
    pip install -r requirements.txt
+   # or if you want faster installation
+   pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
    ```
 
 4. **Prepare dataset**
