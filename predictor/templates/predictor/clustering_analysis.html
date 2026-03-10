@@ -190,34 +190,22 @@
                 <span class="fw-bold text-dark">Evaluation Metrics</span>
                 <div class="d-flex gap-2 flex-wrap">
                   <span
-                    class="badge bg-light text-primary border border-primary"
+                    class="badge bg-light text-primary border border-primary px-3 py-2 fs-6"
                   >
                     Silhouette Score: {{ evaluations.silhouette|safe }}
-                  </span>
-                  <span
-                    class="badge bg-light text-success border border-success"
-                  >
-                    Seating CV: {{ evaluations.overall_cv_seating|safe }}%
-                  </span>
-                  <span
-                    class="badge bg-light text-warning border border-warning"
-                  >
-                    Price CV: {{ evaluations.overall_cv_price|safe }}%
                   </span>
                 </div>
               </div>
               <div class="card-body">
-                <p class="text-muted small mb-3">
-                  The <strong>Silhouette Score</strong> (range -1 to 1) measures
-                  how well-separated the clusters are — each data point's
-                  distance to its own cluster vs the nearest other cluster. The
-                  <strong>Coefficient of Variation (CV%)</strong> shows relative
-                  variability within each cluster (std / mean × 100%). The
-                  <b>OVERALL</b> row shows the global CV across the entire
-                  dataset.
-                </p>
                 <div class="table-responsive">
                   {{ evaluations.summary|safe }}
+                </div>
+
+                <div class="table-responsive mt-4">
+                  <h5 class="fw-bold mb-3 text-secondary">
+                    Coefficient of Variation
+                  </h5>
+                  {{ evaluations.cv_table|safe }}
                 </div>
               </div>
             </div>
