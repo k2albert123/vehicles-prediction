@@ -43,12 +43,36 @@ for cid in range(7):
         stats[f"{feat}_cv%"] = calculate_cv(cluster_df[feat])
     cluster_stats.append(stats)
 
-cluster_summary = pd.DataFrame(cluster_stats)
+cluster_summary_df = pd.DataFrame(cluster_stats)
+
+# --- Overall CV ---
+# For each feature, compute the weighted average CV across all clusters
+# (weighted by cluster size, i.e., count)
+total_count = cluster_summary_df["count"].sum()
+overall_row = {"cluster_id": "GLOBAL\n(full dataset, before clustering)", "count": int(total_count)}
+
+for feat in ["seating_capacity", "wholesale_price"]:
+    # Weighted average of per-cluster CVs
+    weighted_cv = (
+        cluster_summary_df[f"{feat}_cv%"] * cluster_summary_df["count"]
+    ).sum() / total_count
+    # Also compute the true global CV (std over mean of the whole dataset)
+    global_cv = calculate_cv(df[feat])
+    overall_row[f"{feat}_mean"] = round(df[feat].mean(), 2)
+    overall_row[f"{feat}_cv%"] = round(global_cv, 2)
+
+cluster_summary = pd.concat(
+    [cluster_summary_df, pd.DataFrame([overall_row])],
+    ignore_index=True
+)
+
 comparison_df = df[["client_name", "seating_capacity", "wholesale_price", "cluster_id"]]
 
 def evaluate_clustering_model():
     return {
         "silhouette": silhouette_avg,
+        "overall_cv_seating": round(calculate_cv(df["seating_capacity"]), 2),
+        "overall_cv_price": round(calculate_cv(df["wholesale_price"]), 2),
         "summary": cluster_summary.to_html(
             classes="table table-bordered table-striped table-sm text-center",
             float_format="%.2f",
