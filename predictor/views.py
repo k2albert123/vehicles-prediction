@@ -15,8 +15,6 @@ clustering_model = joblib.load(
     "model_generators/clustering/clustering_model.pkl")
 clustering_pt = joblib.load(
     "model_generators/clustering/clustering_pt.pkl")
-wholesale_mean = joblib.load(
-    "model_generators/clustering/wholesale_mean.pkl")
 
 
 def classification_analysis(request):
@@ -49,26 +47,14 @@ def clustering_analysis(request):
             # Step 1: Predict price
             predicted_price = regression_model.predict(
                 [[year, km, seats, income]])[0]
-            # Step 2: Predict cluster
-            # Transform seating capacity the same way as training
+            # Step 2: Predict cluster using income + predicted price
             import numpy as np
-            X_seating = clustering_pt.transform([[seats]])
-            # Use mean wholesale price as proxy (scaled same as training: * 0.01)
-            X_price = np.array([[wholesale_mean]]) * 0.01 / 1.0  # approximate same scale
-            # StandardScaler mean and std are encoded in the clustering_pt; use simple scale
-            X_cluster = np.hstack([X_seating, [[0.0]]])  # wholesale contribution is ~0 (scaled by 0.01)
-            cluster_id = clustering_model.predict(X_cluster)[0]
-            
-            # Mapping for all 7 seating capacity clusters
-            mapping = {
-                0: "4-Seater (Compact)",
-                1: "8-Seater (Large)",
-                2: "3-Seater (Coupe)",
-                3: "7-Seater (Family)",
-                4: "2-Seater (Sport)",
-                5: "6-Seater (Mini-Van)",
-                6: "5-Seater (Standard)"
-            }
+            X_cluster_raw = [[income, predicted_price]]
+            X_cluster_proc = clustering_pt.transform(X_cluster_raw)
+            cluster_id = clustering_model.predict(X_cluster_proc)[0]
+
+            # Mapping for all 5 scaled clusters
+            mapping = {0: "Economy", 1: "Standard", 2: "Premium", 3: "Extra Premium", 4: "Luxury"}
             context.update({
                 "prediction": mapping.get(cluster_id, f"Cluster {cluster_id}"),
                 "price": predicted_price
