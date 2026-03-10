@@ -1,79 +1,57 @@
 import pandas as pd
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
-from sklearn.preprocessing import PowerTransformer, StandardScaler
+from sklearn.preprocessing import StandardScaler
 import joblib
-import numpy as np
 
 df = pd.read_csv("dummy-data/vehicles_ml_dataset.csv")
 
-def calculate_cv(series):
-    if series.mean() == 0: return 0
-    return round((series.std() / series.mean()) * 100, 2)
+# 1. Understanding What They Want
+SEGMENT_FEATURES = ["estimated_income", "selling_price"]
 
-# High silhouette with non-zero CV implementation
-# We use seating_capacity as primary and wholesale_price as a secondary feature
-pt = PowerTransformer()
-X_seating = pt.fit_transform(df[["seating_capacity"]])
-X_price = StandardScaler().fit_transform(df[["wholesale_price"]]) * 0.01 # Tiny influence for CV
+# Method 2 - Standardize Features (VERY IMPORTANT)
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(df[SEGMENT_FEATURES])
 
-X_combined = np.hstack([X_seating, X_price])
+# 5 clusters: Economy, Standard, Premium, Extra Premium, Luxury
+kmeans = KMeans(n_clusters=5, random_state=42, n_init="auto")
+df["cluster_id"] = kmeans.fit_predict(X_scaled)
+centers = kmeans.cluster_centers_
 
-# Use 7 clusters to separate seating capacities perfectly
-kmeans = KMeans(n_clusters=7, random_state=42, n_init="auto")
-df["cluster_id"] = kmeans.fit_predict(X_combined)
-
-# Save model and preprocessing objects
+# Save model and scaler
 joblib.dump(kmeans, "model_generators/clustering/clustering_model.pkl")
-joblib.dump(pt, "model_generators/clustering/clustering_pt.pkl")
-# Save wholesale_price mean as a proxy for inference
-wholesale_mean = float(df["wholesale_price"].mean())
-joblib.dump(wholesale_mean, "model_generators/clustering/wholesale_mean.pkl")
+joblib.dump(scaler, "model_generators/clustering/clustering_pt.pkl")
 
-silhouette_avg = round(silhouette_score(X_combined, df["cluster_id"]), 2)
+silhouette_avg = round(silhouette_score(X_scaled, df["cluster_id"]), 3)
 
-# Calculate summary with CV for both features
-cluster_stats = []
-for cid in range(7):
-    cluster_df = df[df["cluster_id"] == cid]
-    if cluster_df.empty: continue
-    stats = {"cluster_id": cid, "count": len(cluster_df)}
-    for feat in ["seating_capacity", "wholesale_price"]:
-        stats[f"{feat}_mean"] = round(cluster_df[feat].mean(), 2)
-        stats[f"{feat}_cv%"] = calculate_cv(cluster_df[feat])
-    cluster_stats.append(stats)
+# Map labels based on income scale to match screenshot labels
+sorted_clusters = centers[:, 0].argsort()
+cluster_mapping = {
+    sorted_clusters[0]: "Economy",
+    sorted_clusters[1]: "Standard",
+    sorted_clusters[2]: "Premium",
+    sorted_clusters[3]: "Extra Premium",
+    sorted_clusters[4]: "Luxury",
+}
+df["client_class"] = df["cluster_id"].map(cluster_mapping)
 
-cluster_summary_df = pd.DataFrame(cluster_stats)
+# 2. Add CV Calculation
+# Calculate CV for each cluster
+cv_table_data = df.groupby("cluster_id")[SEGMENT_FEATURES].agg(["mean", "std"])
 
-# --- Overall CV ---
-# For each feature, compute the weighted average CV across all clusters
-# (weighted by cluster size, i.e., count)
-total_count = cluster_summary_df["count"].sum()
-overall_row = {"cluster_id": "GLOBAL\n(full dataset, before clustering)", "count": int(total_count)}
+# Calculate coefficient of variation
+cv_table_data["income_cv%"] = (cv_table_data[("estimated_income", "std")] / cv_table_data[("estimated_income", "mean")]) * 100
+cv_table_data["price_cv%"] = (cv_table_data[("selling_price", "std")] / cv_table_data[("selling_price", "mean")]) * 100
 
-for feat in ["seating_capacity", "wholesale_price"]:
-    # Weighted average of per-cluster CVs
-    weighted_cv = (
-        cluster_summary_df[f"{feat}_cv%"] * cluster_summary_df["count"]
-    ).sum() / total_count
-    # Also compute the true global CV (std over mean of the whole dataset)
-    global_cv = calculate_cv(df[feat])
-    overall_row[f"{feat}_mean"] = round(df[feat].mean(), 2)
-    overall_row[f"{feat}_cv%"] = round(global_cv, 2)
+cv_table = cv_table_data[["income_cv%", "price_cv%"]].round(2).reset_index()
 
-cluster_summary = pd.concat(
-    [cluster_summary_df, pd.DataFrame([overall_row])],
-    ignore_index=True
-)
+comparison_df = df[["client_name", "estimated_income", "selling_price", "client_class"]]
 
-comparison_df = df[["client_name", "seating_capacity", "wholesale_price", "cluster_id"]]
-
+# 3. Display CV in Django Return Dictionary
 def evaluate_clustering_model():
     return {
         "silhouette": silhouette_avg,
-        "overall_cv_seating": round(calculate_cv(df["seating_capacity"]), 2),
-        "overall_cv_price": round(calculate_cv(df["wholesale_price"]), 2),
-        "summary": cluster_summary.to_html(
+        "summary": cv_table_data.round(2).reset_index().to_html(
             classes="table table-bordered table-striped table-sm text-center",
             float_format="%.2f",
             justify="center",
@@ -85,8 +63,14 @@ def evaluate_clustering_model():
             justify="center",
             index=False,
         ),
+        "cv_table": cv_table.to_html(
+            classes="table table-bordered table-striped table-sm text-center",
+            float_format="%.2f",
+            justify="center",
+            index=False,
+        ),
     }
 
+
 if __name__ == "__main__":
-    # Ensure models are regenerated when run as script
     pass
